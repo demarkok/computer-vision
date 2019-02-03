@@ -48,7 +48,7 @@ class _CornerTracker:
                               minEigThreshold=0.005)
 
         self.feature_params = dict(maxCorners=1000,
-                                   qualityLevel=0.02,
+                                   qualityLevel=0.05,
                                    minDistance=5,
                                    blockSize=10)
         self.circle_size = 3
