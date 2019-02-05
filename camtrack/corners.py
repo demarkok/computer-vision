@@ -49,7 +49,7 @@ class _CornerTracker:
 
         self.feature_params = dict(maxCorners=1000,
                                    qualityLevel=0.05,
-                                   minDistance=5,
+                                   minDistance=10,
                                    blockSize=10)
         self.circle_size = 3
 
@@ -64,17 +64,33 @@ class _CornerTracker:
                                         np.array([self.circle_size] * new_corner_points.shape[0]))
             return
 
-        marked = np.zeros_like(self.image, dtype=np.bool).transpose()
-        for point in np.array(self.corners.points.round(), dtype=np.int32):
-            marked[point] = True
+        marked = np.zeros((self.image.shape[1], self.image.shape[0]), dtype=np.bool)
+        for point in np.array(self.corners.points, dtype=np.int32):
+            if point[0] < self.image.shape[1] and point[1] < self.image.shape[0]:
+                marked[tuple(point)] = True
+
+        delta = 5
+        window = [(i, j) for i in range(-delta, delta + 1) for j in range(-delta, delta + 1)]
 
         def empty_window(position):
-            return not marked[tuple(position)]
+            for d in window:
+                neighbour = position + d
+                if neighbour[0] >= self.image.shape[1] or neighbour[0] < 0 or neighbour[1] >= self.image.shape[0] or \
+                        neighbour[1] < 0:
+                    continue
+                if marked[tuple(neighbour)]:
+                    return False
+            return True
 
         points = []
+        np.random.shuffle(new_corner_points)
+        counter = 0
         for point in new_corner_points:
             if empty_window(point):
                 points.append(point)
+                counter += 1
+            if counter >= self.feature_params['maxCorners'] - self.corners.points.shape[0]:
+                break
         self.corners.add_corners(points, self.circle_size)
 
     def update_image(self, new_image):
@@ -85,7 +101,8 @@ class _CornerTracker:
             if self.corners.ids.shape[0] != 0:
                 refreshed_corners, status, _ = cv2.calcOpticalFlowPyrLK(_to256(self.image),
                                                                         _to256(new_image),
-                                                                        np.array(self.corners.points, dtype=np.float32).round().reshape(-1, 2),
+                                                                        np.array(self.corners.points,
+                                                                                 dtype=np.float32).reshape(-1, 2),
                                                                         None, **self.lk_params)
                 status = np.array(status, dtype=np.bool).reshape(-1)
                 self.corners = _corners.filter_frame_corners(self.corners, status)
