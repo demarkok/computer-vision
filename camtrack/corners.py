@@ -52,7 +52,7 @@ class _CornerTracker:
                                    minDistance=10,
                                    blockSize=10)
         self.circle_size = 3
-
+        self.delta = 5
         self.image = None
         self.corners = None
 
@@ -69,8 +69,7 @@ class _CornerTracker:
             if point[0] < self.image.shape[1] and point[1] < self.image.shape[0]:
                 marked[tuple(point)] = True
 
-        delta = 5
-        window = [(i, j) for i in range(-delta, delta + 1) for j in range(-delta, delta + 1)]
+        window = [(i, j) for i in range(-self.delta, self.delta + 1) for j in range(-self.delta, self.delta + 1)]
 
         def empty_window(position):
             for d in window:
