@@ -65,8 +65,12 @@ class _CornerTracker:
             return
 
         marked = np.zeros((self.image.shape[1], self.image.shape[0]), dtype=np.bool)
+
+        def is_bounded(x, y):
+            return 0 <= x < self.image.shape[1] and 0 <= y < self.image.shape[0]
+
         for point in np.array(self.corners.points, dtype=np.int32):
-            if point[0] < self.image.shape[1] and point[1] < self.image.shape[0]:
+            if is_bounded(*point):
                 marked[tuple(point)] = True
 
         window = [(i, j) for i in range(-self.delta, self.delta + 1) for j in range(-self.delta, self.delta + 1)]
@@ -74,8 +78,7 @@ class _CornerTracker:
         def empty_window(position):
             for d in window:
                 neighbour = position + d
-                if neighbour[0] >= self.image.shape[1] or neighbour[0] < 0 or neighbour[1] >= self.image.shape[0] or \
-                        neighbour[1] < 0:
+                if not is_bounded(*neighbour):
                     continue
                 if marked[tuple(neighbour)]:
                     return False
