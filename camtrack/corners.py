@@ -52,10 +52,11 @@ class _CornerTracker:
                                    minDistance=10,
                                    blockSize=10)
         self.circle_size = 3
-        self.delta = 5
         self.image = None
         self.corners = None
-        self.lookup_window = [(i, j) for i in range(-self.delta, self.delta + 1) for j in range(-self.delta, self.delta + 1)]
+        self.window_size = 5
+        self.lookup_window = [(i, j) for i in range(-self.window_size, self.window_size + 1) for j in
+                              range(-self.window_size, self.window_size + 1)]
 
     def add_new_corners(self, new_corner_points):
         new_corner_points = np.array(new_corner_points, dtype=np.int32).reshape(-1, 2)
@@ -83,16 +84,16 @@ class _CornerTracker:
                     return False
             return True
 
-        points = []
+        selected_points = []
         np.random.shuffle(new_corner_points)
         counter = 0
         for point in new_corner_points:
             if empty_window(point):
-                points.append(point)
+                selected_points.append(point)
                 counter += 1
             if counter >= self.feature_params['maxCorners'] - self.corners.points.shape[0]:
                 break
-        self.corners.add_corners(points, self.circle_size)
+        self.corners.add_corners(selected_points, self.circle_size)
 
     def update_image(self, new_image):
         if self.image is None:
@@ -100,14 +101,14 @@ class _CornerTracker:
             self.add_new_corners(cv2.goodFeaturesToTrack(new_image, **self.feature_params))
         else:
             if self.corners.ids.shape[0] != 0:
-                refreshed_corners, status, _ = cv2.calcOpticalFlowPyrLK(_to256(self.image),
-                                                                        _to256(new_image),
-                                                                        np.array(self.corners.points,
-                                                                                 dtype=np.float32).reshape(-1, 2),
-                                                                        None, **self.lk_params)
+                updated_corner_points, status, _ = cv2.calcOpticalFlowPyrLK(_to256(self.image),
+                                                                            _to256(new_image),
+                                                                            np.array(self.corners.points,
+                                                                                     dtype=np.float32).reshape(-1, 2),
+                                                                            None, **self.lk_params)
                 status = np.array(status, dtype=np.bool).reshape(-1)
-                self.corners = _corners.filter_frame_corners(self.corners, status)
-                self.corners._points = np.array(refreshed_corners)[status]
+                self.corners = _corners.filter_frame_corners(self.corners, status)  # remove non-tracked points
+                self.corners._points = np.array(updated_corner_points)[status]  # update coordinates
                 self.add_new_corners(cv2.goodFeaturesToTrack(new_image, **self.feature_params))
 
         self.image = new_image
