@@ -42,77 +42,67 @@ def _to256(img):
 class _CornerTracker:
 
     def __init__(self):
-        self.lk_params = dict(winSize=(15, 15),
-                              maxLevel=2,
-                              criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.3),
-                              minEigThreshold=0.005)
-
-        self.feature_params = dict(maxCorners=1000,
-                                   qualityLevel=0.05,
-                                   minDistance=10,
-                                   blockSize=10)
-        self.circle_size = 3
+        self.n_corners = 300
+        self.circle_size = 4
+        self.safe_area_radius = 8
         self.image = None
         self.corners = None
-        self.window_size = 5
-        self.lookup_window = [(i, j) for i in range(-self.window_size, self.window_size + 1) for j in
-                              range(-self.window_size, self.window_size + 1)]
+        self.safe_area_delta = [(i, j) for i in range(-self.safe_area_radius, self.safe_area_radius + 1) for j in
+                                range(-self.safe_area_radius, self.safe_area_radius + 1)
+                                if i ** 2 + j ** 2 < self.safe_area_radius ** 2]
+        self.mask = None
+        self.flow_params = dict(winSize=(15, 15),
+                                maxLevel=2,
+                                criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.3),
+                                minEigThreshold=0.005)
+        self.corners_params = dict(maxCorners=self.n_corners,
+                                   qualityLevel=0.05,
+                                   minDistance=self.safe_area_radius,
+                                   blockSize=10,
+                                   gradientSize=1,
+                                   mask=None)
+
+    def update_mask(self):
+        def is_bounded(x, y):
+            return 0 <= x < self.image.shape[1] and 0 <= y < self.image.shape[0]
+        self.mask = np.ones((self.image.shape[1], self.image.shape[0]), dtype=np.uint8)
+        for point in np.array(self.corners.points, dtype=np.int32):
+            for d in self.safe_area_delta:
+                neighbour = point + d
+                if is_bounded(*neighbour):
+                    self.mask[tuple(neighbour)] = 0
 
     def add_new_corners(self, new_corner_points):
+        if new_corner_points is None:
+            return
         new_corner_points = np.array(new_corner_points, dtype=np.int32).reshape(-1, 2)
         if self.corners is None:
             self.corners = FrameCorners(np.array(range(new_corner_points.shape[0])),
                                         new_corner_points,
                                         np.array([self.circle_size] * new_corner_points.shape[0]))
             return
-
-        marked = np.zeros((self.image.shape[1], self.image.shape[0]), dtype=np.bool)
-
-        def is_bounded(x, y):
-            return 0 <= x < self.image.shape[1] and 0 <= y < self.image.shape[0]
-
-        for point in np.array(self.corners.points, dtype=np.int32):
-            if is_bounded(*point):
-                marked[tuple(point)] = True
-
-        def empty_window(position):
-            for d in self.lookup_window:
-                neighbour = position + d
-                if not is_bounded(*neighbour):
-                    continue
-                if marked[tuple(neighbour)]:
-                    return False
-            return True
-
-        selected_points = []
-        np.random.shuffle(new_corner_points)
-        counter = 0
-        for point in new_corner_points:
-            if empty_window(point):
-                selected_points.append(point)
-                counter += 1
-            if counter >= self.feature_params['maxCorners'] - self.corners.points.shape[0]:
-                break
-        self.corners.add_corners(selected_points, self.circle_size)
+        self.corners.add_corners(new_corner_points, self.circle_size)
 
     def update_image(self, new_image):
         if self.image is None:
             self.image = new_image
-            self.add_new_corners(cv2.goodFeaturesToTrack(new_image, **self.feature_params))
+            self.add_new_corners(cv2.goodFeaturesToTrack(new_image, **self.corners_params))
         else:
             if self.corners.ids.shape[0] != 0:
                 updated_corner_points, status, _ = cv2.calcOpticalFlowPyrLK(_to256(self.image),
                                                                             _to256(new_image),
                                                                             np.array(self.corners.points,
                                                                                      dtype=np.float32).reshape(-1, 2),
-                                                                            None, **self.lk_params)
+                                                                            None, **self.flow_params)
                 status = np.array(status, dtype=np.bool).reshape(-1)
                 self.corners = _corners.filter_frame_corners(self.corners, status)  # remove non-tracked points
                 self.corners._points = np.array(updated_corner_points)[status]  # update coordinates
-                self.add_new_corners(cv2.goodFeaturesToTrack(new_image, **self.feature_params))
-
+                self.corners_params['maxCorners'] = self.n_corners - self.corners.points.shape[0]
+                if self.corners_params['maxCorners'] > 0:
+                    self.update_mask()
+                    self.corners_params['mask'] = self.mask.transpose()
+                    self.add_new_corners(cv2.goodFeaturesToTrack(new_image, **self.corners_params))
         self.image = new_image
-
         return self.corners
 
 
