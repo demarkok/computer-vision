@@ -55,6 +55,7 @@ class _CornerTracker:
         self.delta = 5
         self.image = None
         self.corners = None
+        self.lookup_window = [(i, j) for i in range(-self.delta, self.delta + 1) for j in range(-self.delta, self.delta + 1)]
 
     def add_new_corners(self, new_corner_points):
         new_corner_points = np.array(new_corner_points, dtype=np.int32).reshape(-1, 2)
@@ -73,10 +74,8 @@ class _CornerTracker:
             if is_bounded(*point):
                 marked[tuple(point)] = True
 
-        window = [(i, j) for i in range(-self.delta, self.delta + 1) for j in range(-self.delta, self.delta + 1)]
-
         def empty_window(position):
-            for d in window:
+            for d in self.lookup_window:
                 neighbour = position + d
                 if not is_bounded(*neighbour):
                     continue
