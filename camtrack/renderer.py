@@ -18,7 +18,7 @@ import data3d
 def _build_example_program():
     example_vertex_shader = shaders.compileShader(
         """
-        #version 140
+        #version 130
         uniform mat4 mvp;
 
         in vec3 position;
@@ -31,7 +31,7 @@ def _build_example_program():
     )
     example_fragment_shader = shaders.compileShader(
         """
-        #version 140
+        #version 130
         out vec3 out_color;
 
         void main() {
