@@ -101,7 +101,7 @@ class CameraTrackRenderer:
         :param cam_model_files: path to camera model obj file and texture. The model consists of
         triangles with per-point uv and normal attributes
         :param tracked_cam_parameters: tracked camera field of view and aspect ratio. To be used
-        for building tracked camera frustrum
+        for building tracked camera frustum
         :param point_cloud: colored point cloud
         """
 
@@ -139,11 +139,11 @@ class CameraTrackRenderer:
         :param camera_fov_y: render camera field of view. To be used for building a projection
         matrix. Use glutGet to calculate current aspect ratio
         :param tracked_cam_track_pos_float: a frame in which tracked camera
-        model and frustrum should be drawn (see tracked_cam_track_pos for basic task)
+        model and frustum should be drawn (see tracked_cam_track_pos for basic task)
         :return: returns nothing
         """
 
-        # a frame in which a tracked camera model and frustrum should be drawn
+        # a frame in which a tracked camera model and frustum should be drawn
         # without interpolation
         tracked_cam_track_pos = int(tracked_cam_track_pos_float)
 
