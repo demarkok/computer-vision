@@ -63,7 +63,8 @@ class CameraTrackRenderer:
         :param point_cloud: colored point cloud
         """
 
-        self._example_buffer_object = vbo.VBO(np.array([0, 0, 0], dtype=np.float32))
+        self._example_buffer_object = vbo.VBO(
+            np.array([[0, 0, 0], [0, 0.5, 0], [0.5, 0, 0], [0, 0, 0.5]], dtype=np.float32))
 
         self._example_program = _build_example_program()
 
@@ -89,10 +90,41 @@ class CameraTrackRenderer:
         tracked_cam_track_pos = int(tracked_cam_track_pos_float)
 
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+        aspect_ratio = GLUT.glutGet(GLUT.GLUT_WINDOW_WIDTH) / GLUT.glutGet(GLUT.GLUT_WINDOW_HEIGHT)
 
-        self._render_example_point(np.eye(4))
+        model = np.eye(4, dtype=np.float32)
+        view = self._get_view(camera_tr_vec, camera_rot_mat)
+        projection = self._get_projection(camera_fov_y, aspect_ratio)
+
+        mvp = projection.dot(view.dot(model))
+
+        self._render_example_point(mvp)
 
         GLUT.glutSwapBuffers()
+
+    @staticmethod
+    def _get_view(camera_tr_vec, camera_rot_mat):
+        translation = np.eye(4, dtype=np.float32)
+        translation[:3, 3] = -camera_tr_vec
+
+        rotation = np.eye(4, dtype=np.float32)
+        rotation[:3, :3] = np.linalg.inv(camera_rot_mat)
+
+        return rotation.dot(translation)
+
+    @staticmethod
+    def _get_projection(fovy, aspect_ratio, z_near=0.1, z_far=50):
+        y_near = np.tan(fovy) * z_near
+        x_near = y_near * aspect_ratio
+        fx = z_near / x_near
+        fy = z_near / y_near
+        a = -(z_far + z_near) / (z_far - z_near)
+        b = -2 * z_far * z_near / (z_far - z_near)
+        return np.array([[fx, 0, 0, 0],
+                         [0, fy, 0, 0],
+                         [0, 0, a, b],
+                         [0, 0, -1, 0]],
+                        dtype=np.float32)
 
     def _render_example_point(self, mvp):
         shaders.glUseProgram(self._example_program)
@@ -106,7 +138,7 @@ class CameraTrackRenderer:
                                  False, 0,
                                  self._example_buffer_object)
 
-        GL.glDrawArrays(GL.GL_POINTS, 0, 1)
+        GL.glDrawArrays(GL.GL_POINTS, 0, 4)
 
         GL.glDisableVertexAttribArray(position_loc)
         self._example_buffer_object.unbind()
