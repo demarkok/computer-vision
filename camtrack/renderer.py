@@ -84,7 +84,7 @@ class CameraTrackRenderer:
 
     @staticmethod
     def _get_frustum(z_far, tracked_cam_parameters: data3d.CameraParameters):
-        y_far = z_far * np.tan(tracked_cam_parameters.fov_y)
+        y_far = z_far * np.tan(tracked_cam_parameters.fov_y / 2)
         x_far = y_far * tracked_cam_parameters.aspect_ratio
         return np.array([[x_far * dx, y_far * dy, z_far]
                          for (dx, dy) in [(-1, 1), (1, 1), (1, -1), (-1, -1)]], dtype=np.float32)
@@ -177,7 +177,7 @@ class CameraTrackRenderer:
 
     @staticmethod
     def _get_projection(fovy, aspect_ratio, z_near=0.1, z_far=50):
-        y_near = np.tan(fovy) * z_near
+        y_near = np.tan(fovy / 2) * z_near
         x_near = y_near * aspect_ratio
         fx = z_near / x_near
         fy = z_near / y_near
