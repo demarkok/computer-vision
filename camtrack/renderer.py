@@ -86,7 +86,7 @@ class CameraTrackRenderer:
     def _get_frustum(z_far, tracked_cam_parameters: data3d.CameraParameters):
         y_far = z_far * np.tan(tracked_cam_parameters.fov_y / 2)
         x_far = y_far * tracked_cam_parameters.aspect_ratio
-        return np.array([[x_far * dx, y_far * dy, z_far]
+        return np.array([[x_far * dx, y_far * dy, -z_far]
                          for (dx, dy) in [(-1, 1), (1, 1), (1, -1), (-1, -1)]], dtype=np.float32)
 
     def __init__(self,
@@ -108,20 +108,25 @@ class CameraTrackRenderer:
         _FRUSTUM_Z_FAR = 20
         self._FRUSTUM_COLOR = np.array([1, 0, 0])
         self._PATH_COLOR = np.array([1, 1, 1])
-
-        self._frustum = self._get_frustum(_FRUSTUM_Z_FAR, tracked_cam_parameters)
-
         self._n_points = point_cloud.ids.shape[0]
+        self._opencv2opengl = np.array(np.diag([1, -1, -1, 1]), dtype=np.float32)
 
         coords = np.array(point_cloud.points.reshape(-1), dtype=np.float32)
         colors = np.array(point_cloud.colors.reshape(-1), dtype=np.float32)
-        self._camera_path_position = np.array([x.t_vec for x in tracked_cam_track], dtype=np.float32)
-        self._camera_path_rotation = np.array([x.r_mat for x in tracked_cam_track], dtype=np.float32)
-
         self._point_cloud_coords_buffer = vbo.VBO(coords)
         self._point_cloud_colors_buffer = vbo.VBO(colors)
 
+        self._camera_path_position = np.array([x.t_vec for x in tracked_cam_track], dtype=np.float32)
+        self._camera_path_rotation = np.array([x.r_mat for x in tracked_cam_track], dtype=np.float32)
         self._camera_path_position_buffer = vbo.VBO(self._camera_path_position)
+
+        frustum = self._get_frustum(_FRUSTUM_Z_FAR, tracked_cam_parameters)
+        self._frustum_buffer = vbo.VBO(frustum)
+        position = np.zeros(3, dtype=np.float32)
+        self._frustum_segments_buffer = vbo.VBO(np.array([position, frustum[0],
+                                                          position, frustum[1],
+                                                          position, frustum[2],
+                                                          position, frustum[3]], dtype=np.float32))
 
         self._uncolored_elements_program = _build_uncolored_elements_program()
         self._point_cloud_program = _build_point_cloud_program()
@@ -150,16 +155,14 @@ class CameraTrackRenderer:
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
         aspect_ratio = GLUT.glutGet(GLUT.GLUT_WINDOW_WIDTH) / GLUT.glutGet(GLUT.GLUT_WINDOW_HEIGHT)
 
-        opencv2opengl = np.array(np.diag([1, -1, -1, 1]), dtype=np.float32)
         model = np.eye(4, dtype=np.float32)
         view = self._get_view(camera_tr_vec, camera_rot_mat)
         projection = self._get_projection(camera_fov_y, aspect_ratio)
 
-        mvp = projection.dot(view.dot(model.dot(opencv2opengl)))
+        mvp = projection.dot(view.dot(model.dot(self._opencv2opengl)))
 
         self._render_point_cloud(mvp)
         self._render_camera_path(mvp)
-        self._render_camera(mvp, self._camera_path_position[tracked_cam_track_pos])
         self._render_frustum(mvp, self._camera_path_position[tracked_cam_track_pos],
                              self._camera_path_rotation[tracked_cam_track_pos])
 
@@ -215,17 +218,18 @@ class CameraTrackRenderer:
     def _render_camera_path(self, mvp):
         self._render_one_color_element(mvp, self._camera_path_position_buffer, self._PATH_COLOR, GL.GL_LINE_STRIP)
 
-    def _render_camera(self, mvp, position):
-        self._render_one_color_element(mvp, vbo.VBO(position), self._FRUSTUM_COLOR, GL.GL_POINTS)
-
     def _render_frustum(self, mvp, position, rotation):
-        frustum = position + rotation.dot(self._frustum.T).T
-        self._render_one_color_element(mvp, vbo.VBO(frustum), self._FRUSTUM_COLOR, GL.GL_LINE_LOOP)
-        self._render_one_color_element(mvp, vbo.VBO(np.array([position, frustum[0],
-                                                              position, frustum[1],
-                                                              position, frustum[2],
-                                                              position, frustum[3]], dtype=np.float32)),
-                                       self._FRUSTUM_COLOR, GL.GL_LINES)
+        translation_mat = np.eye(4, dtype=np.float32)
+        translation_mat[:3, 3] = position
+
+        rotation_mat = np.eye(4, dtype=np.float32)
+        rotation_mat[:3, :3] = rotation
+        rotation_mat = rotation_mat.dot(self._opencv2opengl)
+
+        mvp = mvp.dot(translation_mat.dot(rotation_mat))
+
+        self._render_one_color_element(mvp, self._frustum_buffer, self._FRUSTUM_COLOR, GL.GL_LINE_LOOP)
+        self._render_one_color_element(mvp, self._frustum_segments_buffer, self._FRUSTUM_COLOR, GL.GL_LINES)
 
     def _render_point_cloud(self, mvp):
         shaders.glUseProgram(self._point_cloud_program)
