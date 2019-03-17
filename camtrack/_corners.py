@@ -32,7 +32,7 @@ class FrameCorners:
     (np.searchsorted).
     """
 
-    __slots__ = ('_ids', '_points', '_sizes')
+    __slots__ = ('_ids', '_points', '_sizes', '_counter')
 
     def __init__(self, ids, points, sizes):
         """
@@ -48,6 +48,8 @@ class FrameCorners:
         self._ids = ids[sorting_idx].reshape(-1, 1)
         self._points = points[sorting_idx].reshape(-1, 2)
         self._sizes = sizes[sorting_idx].reshape(-1, 1)
+        self._counter = ids.shape[0]
+
 
     @property
     def ids(self):
@@ -60,6 +62,17 @@ class FrameCorners:
     @property
     def sizes(self):
         return self._sizes
+
+    def add_corners(self, points, circle_size):
+        points = np.array(points, dtype=np.int32).reshape(-1, 2)
+        self._points = np.concatenate((self.points, points))
+        id_start = self._counter
+        self._ids = np.concatenate((self.ids, np.array(range(id_start, id_start + points.shape[0]), dtype=np.int32)
+                                    .reshape(-1, 1))).reshape(-1, 1)
+        self._sizes = np.append(self._sizes, np.array([circle_size] * points.shape[0], dtype=np.int32)
+                                .reshape(-1, 1)).reshape(-1, 1)
+
+        self._counter += points.shape[0]
 
     def __iter__(self):
         yield self.ids
