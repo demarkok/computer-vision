@@ -1,4 +1,7 @@
 #! /usr/bin/env python3
+import cv2
+
+from _camtrack import _remove_correspondences_with_ids
 
 __all__ = [
     'track_and_calc_colors'
@@ -7,6 +10,7 @@ __all__ = [
 from typing import List, Tuple
 
 import numpy as np
+import sortednp as snp
 
 from corners import CornerStorage
 from data3d import CameraParameters, PointCloud, Pose
@@ -14,11 +18,106 @@ import frameseq
 from _camtrack import *
 
 
+triangulation_parameters = TriangulationParameters(
+    max_reprojection_error=1.0,
+    min_triangulation_angle_deg=5.0,
+    min_depth=0.1
+)
+
+
+def _initialize_with_two_frames(corners_1, corners_2, intrinsic_mat):
+    correspondences = build_correspondences(corners_1, corners_2)
+    if correspondences.points_1.shape[0] <= 5:
+        return 0, None, None, None
+    E, mask_E = cv2.findEssentialMat(
+        correspondences.points_1,
+        correspondences.points_2,
+        intrinsic_mat,
+        method=cv2.RANSAC,
+        prob=0.999,
+        threshold=1.0
+    )
+    fundamental_inliers = np.sum(mask_E)
+    H, mask_H = cv2.findHomography(
+        correspondences.points_1,
+        correspondences.points_2,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=1.0,
+        confidence=0.999
+    )
+    homography_inliers = np.sum(mask_H)
+    if fundamental_inliers / homography_inliers < 1:
+        return 0, None, None, None
+    correspondences = _remove_correspondences_with_ids(correspondences, np.where(mask_E == 0)[0])
+    best_points, best_ids, best_pose = None, None, None
+    R1, R2, t_d = cv2.decomposeEssentialMat(E)
+    for pose in [Pose(R1, t_d), Pose(R2, t_d), Pose(R1, -t_d), Pose(R2, -t_d)]:
+            points, ids = triangulate_correspondences(
+                correspondences,
+                eye3x4(),
+                pose_to_view_mat3x4(pose),
+                intrinsic_mat,
+                triangulation_parameters,
+            )
+            if best_points is None or points.size > best_points.size:
+                best_points, best_ids, best_pose = points, ids, pose
+    return len(best_points), best_points, best_ids, best_pose
+
+
+def _initialize_with_storage(corner_storage, intrinsic_mat):
+    print("len(corner_storage) =", len(corner_storage))
+    best_size = 0
+    best_index = 1
+    for i in range(1, len(corner_storage)):
+        size, _, _, _ = _initialize_with_two_frames(corner_storage[0], corner_storage[i], intrinsic_mat)
+        if size > best_size:
+            best_index = i
+
+    init_size, init_points, init_ids, init_pose = \
+        _initialize_with_two_frames(corner_storage[0], corner_storage[best_index], intrinsic_mat)
+    point_cloud_builder = PointCloudBuilder()
+    point_cloud_builder.add_points(init_ids, init_points)
+    return best_index, init_size, init_points, init_ids, init_pose, point_cloud_builder
+
+
 def _track_camera(corner_storage: CornerStorage,
                   intrinsic_mat: np.ndarray) \
         -> Tuple[List[np.ndarray], PointCloudBuilder]:
-    # TODO: implement
-    return [], PointCloudBuilder()
+    view_mats = [eye3x4()] * len(corner_storage)
+    init_index, init_size, init_points, init_ids, init_pose, point_cloud_builder = \
+        _initialize_with_storage(corner_storage, intrinsic_mat)
+
+    for i in range(1, len(corner_storage)):
+        corners = corner_storage[i]
+        if i == init_index:
+            view_mats[i] = pose_to_view_mat3x4(init_pose)
+        else:
+            ids = []
+            object_points = []
+            image_points = []
+            for id, point in zip(corners.ids, corners.points):
+                indices, _ = np.nonzero(point_cloud_builder.ids == id)
+                if len(indices) == 0:
+                    continue
+                ids.append(id)
+                object_points.append(point_cloud_builder.points[indices[0]])
+                image_points.append(point)
+            if len(object_points) < 4:
+                continue
+            solve_result, R, t, inliers = cv2.solvePnPRansac(
+                np.array(object_points),
+                np.array(image_points),
+                cameraMatrix=intrinsic_mat,
+                distCoeffs=None
+            )
+            if not solve_result:
+                continue
+            view_mats[i] = rodrigues_and_translation_to_view_mat3x4(R, t)
+        for j in range(i):
+            correspondences = build_correspondences(corner_storage[j], corner_storage[i], ids_to_remove=point_cloud_builder.ids)
+            points, ids = triangulate_correspondences(correspondences, view_mats[j], view_mats[i], intrinsic_mat, triangulation_parameters)
+            point_cloud_builder.add_points(ids, points)
+    return view_mats, point_cloud_builder
 
 
 def track_and_calc_colors(camera_parameters: CameraParameters,

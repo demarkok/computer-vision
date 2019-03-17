@@ -129,7 +129,7 @@ def _remove_correspondences_with_ids(correspondences: Correspondences,
         -> Correspondences:
     ids = correspondences.ids.flatten()
     ids_to_remove = ids_to_remove.flatten()
-    _, (indices_1, _) = snp.intersect(ids, ids_to_remove, indices=True)
+    _, (indices_1, _) = snp.intersect(ids.astype(int), ids_to_remove.astype(int), indices=True)
     mask = np.full(ids.shape, True)
     mask[indices_1] = False
     return Correspondences(
@@ -143,7 +143,7 @@ def build_correspondences(corners_1: FrameCorners, corners_2: FrameCorners,
                           ids_to_remove=None) -> Correspondences:
     ids_1 = corners_1.ids.flatten()
     ids_2 = corners_2.ids.flatten()
-    _, (indices_1, indices_2) = snp.intersect(ids_1, ids_2, indices=True)
+    _, (indices_1, indices_2) = snp.intersect(ids_1.astype(int), ids_2.astype(int), indices=True)
     corrs = Correspondences(
         ids_1[indices_1],
         corners_1.points[indices_1],
@@ -276,7 +276,7 @@ class PointCloudBuilder:
     def add_points(self, ids: np.ndarray, points: np.ndarray) -> None:
         ids = ids.reshape(-1, 1)
         points = points.reshape(-1, 3)
-        _, (idx_1, idx_2) = snp.intersect(self.ids.flatten(), ids.flatten(),
+        _, (idx_1, idx_2) = snp.intersect(self.ids.flatten().astype(int), ids.flatten().astype(int),
                                           indices=True)
         self.points[idx_1] = points[idx_2]
         self._ids = np.vstack((self.ids, np.delete(ids, idx_2, axis=0)))
@@ -288,7 +288,7 @@ class PointCloudBuilder:
         self._colors = colors
 
     def update_points(self, ids: np.ndarray, points: np.ndarray) -> None:
-        _, (idx_1, idx_2) = snp.intersect(self.ids.flatten(), ids.flatten(),
+        _, (idx_1, idx_2) = snp.intersect(self.ids.flatten().astype(int), ids.flatten().astype(int),
                                           indices=True)
         self._points[idx_1] = points[idx_2]
 
@@ -323,8 +323,8 @@ def draw_residuals(grayscale_image: np.ndarray, corners: FrameCorners,
                                             grayscale_image.shape[0])
     proj_mat = intrinsic_mat @ pose_to_view_mat3x4(pose)
     _, (point_cloud_idx, corners_idx) = snp.intersect(
-        point_cloud.ids.flatten(),
-        corners.ids.flatten(),
+        point_cloud.ids.flatten().astype(int),
+        corners.ids.flatten().astype(int),
         indices=True
     )
     corner_points = corners.points[corners_idx]
