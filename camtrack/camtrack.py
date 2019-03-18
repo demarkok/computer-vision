@@ -65,10 +65,11 @@ def _initialize_with_two_frames(corners_1, corners_2, intrinsic_mat):
 
 
 def _initialize_with_storage(corner_storage, intrinsic_mat):
-    print("len(corner_storage) =", len(corner_storage))
+    print("init...")
     best_size = 0
     best_index = 1
     for i in range(1, len(corner_storage)):
+        print("init 0 and", i)
         size, _, _, _ = _initialize_with_two_frames(corner_storage[0], corner_storage[i], intrinsic_mat)
         if size > best_size:
             best_index = i
@@ -89,6 +90,7 @@ def _track_camera(corner_storage: CornerStorage,
 
     for i in range(1, len(corner_storage)):
         corners = corner_storage[i]
+        print("frame", i, "/", len(corner_storage))
         if i == init_index:
             view_mats[i] = pose_to_view_mat3x4(init_pose)
         else:
@@ -112,11 +114,23 @@ def _track_camera(corner_storage: CornerStorage,
             )
             if not solve_result:
                 continue
+            print(inliers, "inliers")
             view_mats[i] = rodrigues_and_translation_to_view_mat3x4(R, t)
         for j in range(i):
-            correspondences = build_correspondences(corner_storage[j], corner_storage[i], ids_to_remove=point_cloud_builder.ids)
-            points, ids = triangulate_correspondences(correspondences, view_mats[j], view_mats[i], intrinsic_mat, triangulation_parameters)
+            correspondences = build_correspondences(
+                corner_storage[j],
+                corner_storage[i],
+                ids_to_remove=point_cloud_builder.ids
+            )
+            points, ids = triangulate_correspondences(
+                correspondences,
+                view_mats[j],
+                view_mats[i],
+                intrinsic_mat,
+                triangulation_parameters
+            )
             point_cloud_builder.add_points(ids, points)
+            print(len(points), "new points")
     return view_mats, point_cloud_builder
 
 
