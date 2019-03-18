@@ -116,6 +116,7 @@ def _track_camera(corner_storage: CornerStorage,
                 continue
             print(inliers, "inliers")
             view_mats[i] = rodrigues_and_translation_to_view_mat3x4(R, t)
+        new_points = 0
         for j in range(i):
             correspondences = build_correspondences(
                 corner_storage[j],
@@ -130,7 +131,8 @@ def _track_camera(corner_storage: CornerStorage,
                 triangulation_parameters
             )
             point_cloud_builder.add_points(ids, points)
-            print(len(points), "new points")
+            new_points += len(points)
+        print(new_points, "new points")
     return view_mats, point_cloud_builder
 
 
