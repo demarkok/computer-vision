@@ -10,7 +10,6 @@ __all__ = [
 from typing import List, Tuple
 
 import numpy as np
-import sortednp as snp
 
 from corners import CornerStorage
 from data3d import CameraParameters, PointCloud, Pose
@@ -51,16 +50,16 @@ def _initialize_with_two_frames(corners_1, corners_2, intrinsic_mat):
     correspondences = _remove_correspondences_with_ids(correspondences, np.where(mask_E == 0)[0])
     best_points, best_ids, best_pose = None, None, None
     R1, R2, t_d = cv2.decomposeEssentialMat(E)
-    for pose in [Pose(R1, t_d), Pose(R2, t_d), Pose(R1, -t_d), Pose(R2, -t_d)]:
-            points, ids = triangulate_correspondences(
-                correspondences,
-                eye3x4(),
-                pose_to_view_mat3x4(pose),
-                intrinsic_mat,
-                triangulation_parameters,
-            )
-            if best_points is None or points.size > best_points.size:
-                best_points, best_ids, best_pose = points, ids, pose
+    for pose in [Pose(R1.T, R1.T @ t_d), Pose(R2.T, R2.T @ t_d), Pose(R1.T, R1.T @ -t_d), Pose(R2.T, R2.T @ -t_d)]:
+        points, ids = triangulate_correspondences(
+            correspondences,
+            eye3x4(),
+            pose_to_view_mat3x4(pose),
+            intrinsic_mat,
+            triangulation_parameters,
+        )
+        if best_points is None or points.size > best_points.size:
+            best_points, best_ids, best_pose = points, ids, pose
     return len(best_points), best_points, best_ids, best_pose
 
 
