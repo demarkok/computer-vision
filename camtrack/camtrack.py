@@ -106,14 +106,14 @@ def _track_camera(corner_storage: CornerStorage,
             if len(object_points) < 4:
                 continue
             solve_result, R, t, inliers = cv2.solvePnPRansac(
-                np.array(object_points),
-                np.array(image_points),
+                np.array(object_points, dtype=np.float64).reshape((len(object_points), 1, 3)),
+                np.array(image_points, dtype=np.float64).reshape((len(object_points), 1, 2)),
                 cameraMatrix=intrinsic_mat,
                 distCoeffs=None
             )
             if not solve_result:
                 continue
-            print(inliers, "inliers")
+            print(inliers.tolist(), "inliers")
             view_mats[i] = rodrigues_and_translation_to_view_mat3x4(R, t)
         new_points = 0
         for j in range(i):
