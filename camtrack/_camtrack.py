@@ -102,14 +102,14 @@ def _to_camera_center(view_mat):
 def _calc_triangulation_angle_mask(view_mat_1: np.ndarray,
                                    view_mat_2: np.ndarray,
                                    points3d: np.ndarray,
-                                   min_angle_deg: float) -> np.ndarray:
+                                   min_angle_deg: float) -> (np.ndarray, np.ndarray):
     camera_center_1 = _to_camera_center(view_mat_1)
     camera_center_2 = _to_camera_center(view_mat_2)
     vecs_1 = normalize(camera_center_1 - points3d)
     vecs_2 = normalize(camera_center_2 - points3d)
     coss = np.einsum('ij,ij->i', vecs_1, vecs_2)
     angles_mask = coss <= np.cos(np.deg2rad(min_angle_deg))
-    return angles_mask
+    return angles_mask, coss
 
 
 Correspondences = namedtuple(
@@ -165,20 +165,20 @@ def _calc_reprojection_error_mask(points3d, points2d_1, points2d_2,
                                   max_reprojection_error):
     reproj_errs_1 = compute_reprojection_errors(points3d, points2d_1,
                                                 intrinsic_mat @ view_mat_1)
-    reproj_errs2 = compute_reprojection_errors(points3d, points2d_2,
+    reproj_errs_2 = compute_reprojection_errors(points3d, points2d_2,
                                                intrinsic_mat @ view_mat_2)
     reproj_err_mask = np.logical_and(
         reproj_errs_1.flatten() < max_reprojection_error,
-        reproj_errs2.flatten() < max_reprojection_error
+        reproj_errs_2.flatten() < max_reprojection_error
     )
-    return reproj_err_mask
+    return reproj_err_mask, np.maximum(reproj_errs_1, reproj_errs_2)
 
 
 def triangulate_correspondences(correspondences: Correspondences,
                                 view_mat_1: np.ndarray, view_mat_2: np.ndarray,
                                 intrinsic_mat: np.ndarray,
                                 parameters: TriangulationParameters) \
-        -> Tuple[np.ndarray, np.ndarray]:
+        -> Tuple[np.ndarray, np.ndarray, float, float]:
     points2d_1 = correspondences.points_1
     points2d_2 = correspondences.points_2
 
@@ -198,7 +198,7 @@ def triangulate_correspondences(correspondences: Correspondences,
                                      normalized_points2d_2.T)
     points3d = cv2.convertPointsFromHomogeneous(points3d.T).reshape(-1, 3)
 
-    reprojection_error_mask = _calc_reprojection_error_mask(
+    reprojection_error_mask, re_max = _calc_reprojection_error_mask(
         points3d,
         points2d_1,
         points2d_2,
@@ -207,9 +207,10 @@ def triangulate_correspondences(correspondences: Correspondences,
         intrinsic_mat,
         parameters.max_reprojection_error
     )
+
     z_mask_1 = _calc_z_mask(points3d, view_mat_1, parameters.min_depth)
     z_mask_2 = _calc_z_mask(points3d, view_mat_2, parameters.min_depth)
-    angle_mask = _calc_triangulation_angle_mask(
+    angle_mask, coss = _calc_triangulation_angle_mask(
         view_mat_1,
         view_mat_2,
         points3d,
@@ -217,7 +218,7 @@ def triangulate_correspondences(correspondences: Correspondences,
     )
     common_mask = reprojection_error_mask & z_mask_1 & z_mask_2 & angle_mask
 
-    return points3d[common_mask], correspondences.ids[common_mask]
+    return points3d[common_mask], correspondences.ids[common_mask], np.median(re_max), np.median(coss)
 
 
 def check_inliers_mask(inliers_mask: np.ndarray,

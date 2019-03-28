@@ -22,16 +22,15 @@ class Tracker:
     def __init__(self, corners: CornerStorage, intrinsic_mat: np.ndarray):
         self._frames = corners
         self._intrinsic_mat = intrinsic_mat
-        self._triangulation_parameters = TriangulationParameters(1, 5, 0.1)
+        self._triangulation_parameters = TriangulationParameters(0.8, 5, 0.1)
         self._cloudBuilder = PointCloudBuilder()
         self.HOM_INLIERS_THRESHOLD = 1.3
         self.FRAMES_TO_INITIALIZE_DENSITY = 5
 
         self._n_of_frames = len(corners)
         self._max_id = corners.max_corner_id()
-        # self._poses = [None] * self._n_of_frames
+
         self._poses = {}
-        # self._corner3ds = np.array([None] * self._max_id)
         self._corner3ds = {}
         self._corner3ds_being_found_counter = np.array([0] * (self._max_id + 1))
 
@@ -50,15 +49,15 @@ class Tracker:
         if homography_inliners / essential_inliers > self.HOM_INLIERS_THRESHOLD:
             return None, 0
 
-        corresps = _remove_correspondences_with_ids(corresps, corresps.ids[mask_essential])
+        corresps = _remove_correspondences_with_ids(corresps, corresps.ids[mask_essential == 0])
 
         R1, R2, t = cv2.decomposeEssentialMat(E)
         poses = [Pose(R1.T, R1.T.dot(t)), Pose(R1.T, R1.T.dot(-t)), Pose(R2.T, R2.T.dot(t)), Pose(R2.T, R2.T.dot(-t))]
         triangulated_in_pose = []
         for pose in poses:
-            points, ids = triangulate_correspondences(corresps, eye3x4(), pose_to_view_mat3x4(pose),
+            points, ids, re_median, cos_median = triangulate_correspondences(corresps, eye3x4(), pose_to_view_mat3x4(pose),
                                                       self._intrinsic_mat, self._triangulation_parameters)
-            triangulated_in_pose.append(ids.shape[0])
+            triangulated_in_pose.append(points.shape[0])
 
         pose_id = np.array(triangulated_in_pose).argmax()
         return poses[pose_id], max(triangulated_in_pose)
@@ -73,9 +72,10 @@ class Tracker:
         step = self._n_of_frames // self.FRAMES_TO_INITIALIZE_DENSITY
 
         for i in range(0, self._n_of_frames, step):
-            for j in range(0, self._n_of_frames, step):
+            for j in range(i + 1, self._n_of_frames, step):
                 pose, metric = self._initial_pose(self._frames[i], self._frames[j])
                 if metric > optimal_metric:
+                    print(i, j, metric)
                     optimal_metric = metric
                     optimal_frame1, optimal_frame2, optimal_pose = i, j, pose
 
@@ -85,7 +85,7 @@ class Tracker:
 
     def _add_cloud_points(self, frame1: int, frame2: int):
         corresps = build_correspondences(self._frames[frame1], self._frames[frame2])
-        points, ids = triangulate_correspondences(corresps,
+        points, ids, _, _ = triangulate_correspondences(corresps,
                                                   pose_to_view_mat3x4(self._poses[frame1]),
                                                   pose_to_view_mat3x4(self._poses[frame2]),
                                                   self._intrinsic_mat, self._triangulation_parameters)
@@ -109,8 +109,8 @@ class Tracker:
                     optimal_frame = frame
         return optimal_frame, optimal_metric
 
-    def _get_estimated_corners_on_frame(self, frame: int) -> Tuple[set, np.ndarray]:
-        ids = set(self._frames[frame].ids.flatten()) & set(self._corner3ds.keys())
+    def _get_estimated_corners_on_frame(self, frame: int) -> Tuple[np.ndarray, np.ndarray]:
+        ids = np.array(list(set(self._frames[frame].ids.flatten()) & set(self._corner3ds.keys())))
         id2point2d = dict(zip(self._frames[frame].ids.flatten(), self._frames[frame].points))
         return ids, np.array([id2point2d[id] for id in ids])
 
@@ -121,10 +121,11 @@ class Tracker:
             return
         found_corners3d = np.array([self._corner3ds[i] for i in found_corners_id])
 
-        print(found_corners3d.shape, found_corners2d.shape)
-        _, rvec, tvec, inliers = cv2.solvePnPRansac(found_corners3d, found_corners2d, self._intrinsic_mat, None)
+        _, rvec, tvec, inliers = cv2.solvePnPRansac(found_corners3d, found_corners2d, self._intrinsic_mat, None, reprojectionError=self._triangulation_parameters.max_reprojection_error)
 
         outlier_ids = np.delete(np.array(list(found_corners_id)), inliers.flatten())
+
+        print("{} outliers has been removed".format(outlier_ids.shape[0]))
 
         for outlier in outlier_ids:
             self._corner3ds.pop(outlier)
@@ -133,7 +134,7 @@ class Tracker:
 
     def _frame_metric(self, frame1, frame2, pose1, pose2) -> int:
         corresps = build_correspondences(self._frames[frame1], self._frames[frame2])
-        _, ids = triangulate_correspondences(corresps, pose_to_view_mat3x4(pose1), pose_to_view_mat3x4(pose2),
+        _, ids, _, _ = triangulate_correspondences(corresps, pose_to_view_mat3x4(pose1), pose_to_view_mat3x4(pose2),
                                              self._intrinsic_mat, self._triangulation_parameters)
         return ids.shape[0]
 
@@ -142,12 +143,17 @@ class Tracker:
         self._initialize()
         frames_estimated = 2
         mask = np.zeros(self._n_of_frames)
+        first_frame = 0
         while frames_estimated < self._n_of_frames:
             frame, metric = self._find_best_frame(mask)
             self._estimate_camera_on_frame(frame)
             if frame not in self._poses:
                 mask[frame] = 1
                 continue
+
+            if frames_estimated == 2:
+                first_frame = frame
+
 
             frames_estimated += 1
 
@@ -157,12 +163,14 @@ class Tracker:
                 self._add_cloud_points(frame, frame2)
 
             print("Estimating position on the frame #{}\n"
-                  "Cloud size = {}\n"
-                  "Number of estimated corners on the frame = {}\n"
-                  "{} frames out of {}\n\n".format(frame, len(self._corner3ds), metric, frames_estimated,
+                  "  Cloud size = {}\n"
+                  "  Number of estimated corners on the frame = {}\n"
+                  "  {} frames out of {}\n\n".format(frame, len(self._corner3ds), metric, frames_estimated,
                                                    self._n_of_frames))
 
             mask.fill(0)
+        self._poses.pop(first_frame)
+        self._estimate_camera_on_frame(first_frame)
 
     def get_track(self) -> List[np.ndarray]:
         return list(map(pose_to_view_mat3x4, list(self._poses.values())))

@@ -75,7 +75,7 @@ class _CornerTracker:
     def add_new_corners(self, new_corner_points):
         if new_corner_points is None:
             return
-        new_corner_points = np.array(new_corner_points, dtype=np.int32).reshape(-1, 2)
+        new_corner_points = np.array(new_corner_points, dtype=np.float32).reshape(-1, 2)
         if self.corners is None:
             self.corners = FrameCorners(np.array(range(new_corner_points.shape[0])),
                                         new_corner_points,
