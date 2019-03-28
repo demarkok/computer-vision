@@ -71,13 +71,13 @@ class Tracker:
 
         step = self._n_of_frames // self.FRAMES_TO_INITIALIZE_DENSITY
 
-        for i in range(0, self._n_of_frames, step):
-            for j in range(i + 1, self._n_of_frames, step):
-                pose, metric = self._initial_pose(self._frames[i], self._frames[j])
-                if metric > optimal_metric:
-                    print(i, j, metric)
-                    optimal_metric = metric
-                    optimal_frame1, optimal_frame2, optimal_pose = i, j, pose
+        i = 0
+        for j in range(i + 1, self._n_of_frames, step):
+            pose, metric = self._initial_pose(self._frames[i], self._frames[j])
+            if metric > optimal_metric:
+                print(i, j, metric)
+                optimal_metric = metric
+                optimal_frame1, optimal_frame2, optimal_pose = i, j, pose
 
         self._poses[optimal_frame1] = view_mat3x4_to_pose(eye3x4())
         self._poses[optimal_frame2] = optimal_pose
