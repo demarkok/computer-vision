@@ -121,7 +121,11 @@ class Tracker:
             return
         found_corners3d = np.array([self._corner3ds[i] for i in found_corners_id])
 
-        _, rvec, tvec, inliers = cv2.solvePnPRansac(found_corners3d, found_corners2d, self._intrinsic_mat, None, reprojectionError=self._triangulation_parameters.max_reprojection_error)
+        _, rvec, tvec, inliers = cv2.solvePnPRansac(found_corners3d, found_corners2d, self._intrinsic_mat, None,
+                                                    reprojectionError=self._triangulation_parameters.max_reprojection_error, useExtrinsicGuess=True)
+
+        if inliers is None:
+            return
 
         outlier_ids = np.delete(np.array(list(found_corners_id)), inliers.flatten())
 
