@@ -25,7 +25,7 @@ class Tracker:
         self._triangulation_parameters = TriangulationParameters(0.8, 5, 0.1)
         self._cloudBuilder = PointCloudBuilder()
         self.HOM_INLIERS_THRESHOLD = 1.3
-        self.FRAMES_TO_INITIALIZE_DENSITY = 5
+        self.FRAMES_TO_INITIALIZE_DENSITY = 3
 
         self._n_of_frames = len(corners)
         self._max_id = corners.max_corner_id()
@@ -72,7 +72,7 @@ class Tracker:
         step = self._n_of_frames // self.FRAMES_TO_INITIALIZE_DENSITY
 
         i = 0
-        for j in range(i + 1, self._n_of_frames, step):
+        for j in range(i + 1, self._n_of_frames):
             pose, metric = self._initial_pose(self._frames[i], self._frames[j])
             if metric > optimal_metric:
                 print(i, j, metric)
@@ -121,6 +121,10 @@ class Tracker:
             return
         found_corners3d = np.array([self._corner3ds[i] for i in found_corners_id])
 
+        # assert(found_corners2d.shape[0] == found_corners3d.shape[0])
+        # assert (found_corners2d.shape[0] == found_corners_id.shape[0])
+
+
         _, rvec, tvec, inliers = cv2.solvePnPRansac(found_corners3d, found_corners2d, self._intrinsic_mat, None,
                                                     reprojectionError=self._triangulation_parameters.max_reprojection_error, useExtrinsicGuess=True)
 
@@ -129,7 +133,9 @@ class Tracker:
 
         outlier_ids = np.delete(np.array(list(found_corners_id)), inliers.flatten())
 
-        print("{} outliers has been removed".format(outlier_ids.shape[0]))
+        # print("{} outliers has been removed".format(outlier_ids.shape[0]))
+
+        # print(frame, found_corners_id[50], found_corners2d[50])
 
         for outlier in outlier_ids:
             self._corner3ds.pop(outlier)
@@ -173,14 +179,12 @@ class Tracker:
                                                    self._n_of_frames))
 
             mask.fill(0)
-        self._poses.pop(first_frame)
-        self._estimate_camera_on_frame(first_frame)
 
     def get_track(self) -> List[np.ndarray]:
-        return list(map(pose_to_view_mat3x4, list(self._poses.values())))
+        return [pose_to_view_mat3x4(self._poses[i]) for i in range(self._n_of_frames)]
 
     def get_point_cloud(self) -> PointCloudBuilder:
-        return PointCloudBuilder(np.array(list(self._corner3ds.keys())), np.array(list(self._corner3ds.values())))
+        return PointCloudBuilder(*map(np.array, zip(*self._corner3ds.items())))
 
 
 def _track_camera(corner_storage: CornerStorage,
