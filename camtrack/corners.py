@@ -42,9 +42,9 @@ def _to256(img):
 class _CornerTracker:
 
     def __init__(self):
-        self.n_corners = 300
-        self.circle_size = 4
-        self.safe_area_radius = 8
+        self.n_corners = 800
+        self.circle_size = 3
+        self.safe_area_radius = 6
         self.image = None
         self.corners = None
         self.safe_area_delta = [(i, j) for i in range(-self.safe_area_radius, self.safe_area_radius + 1) for j in
@@ -96,7 +96,7 @@ class _CornerTracker:
                                                                             None, **self.flow_params)
                 status = np.array(status, dtype=np.bool).reshape(-1)
                 self.corners = _corners.filter_frame_corners(self.corners, status)  # remove non-tracked points
-                self.corners._points = np.array(updated_corner_points)[status]  # update coordinates
+                self.corners._points = np.array(updated_corner_points, dtype=np.float32)[status]  # update coordinates
                 self.corners_params['maxCorners'] = self.n_corners - self.corners.points.shape[0]
                 if self.corners_params['maxCorners'] > 0:
                     self.update_mask()
