@@ -64,7 +64,7 @@ def _initialize_with_storage(corner_storage, intrinsic_mat, triangulation_parame
     best_index = -1
     for i in range(1, len(corner_storage)):
         size, _, _, _ = _initialize_with_two_frames(corner_storage[0], corner_storage[i], intrinsic_mat, triangulation_parameters)
-        print("init 0 and", i, "size =", size)
+        print("init 0 and", i, "size =", size, "best_size =", best_size, "best_index =", best_index, flush=True)
         if size > best_size:
             best_index = i
             best_size = size
@@ -91,23 +91,21 @@ def _track_camera_parametrized(corner_storage: CornerStorage, intrinsic_mat: np.
         print("frame", i, "/", len(corner_storage))
         if i == init_index:
             view_mats[i] = pose_to_view_mat3x4(init_pose)
-            continue
-        corners = corner_storage[i]
-        ids = []
-        object_points = []
-        image_points = []
-        for id, point in zip(corners.ids, corners.points):
-            indices, _ = np.nonzero(point_cloud_builder.ids == id)
-            #print(indices)
-            if len(indices) == 0:
-                continue
-            ids.append(id)
-            object_points.append(point_cloud_builder.points[indices[0]])
-            image_points.append(point)
-        if len(object_points) < 4:
-            print("SMALL OBJECT_POINTS")
-            return None, None
-        try:
+        else:
+            corners = corner_storage[i]
+            ids = []
+            object_points = []
+            image_points = []
+            for id, point in zip(corners.ids, corners.points):
+                indices, _ = np.nonzero(point_cloud_builder.ids == id)
+                if len(indices) == 0:
+                    continue
+                ids.append(id)
+                object_points.append(point_cloud_builder.points[indices[0]])
+                image_points.append(point)
+            if len(object_points) < 4:
+                print("SMALL OBJECT_POINTS")
+                return None, None
             solve_result, R, t, inliers = cv2.solvePnPRansac(
                 np.array(object_points, dtype=np.float64).reshape((len(object_points), 1, 3)),
                 np.array(image_points, dtype=np.float64).reshape((len(image_points), 1, 2)),
@@ -116,12 +114,9 @@ def _track_camera_parametrized(corner_storage: CornerStorage, intrinsic_mat: np.
             )
             if not solve_result:
                 print("NOT SOLVE RESULT")
-                continue
+                return None, None
             print(inliers.tolist(), "inliers")
             view_mats[i] = rodrigues_and_translation_to_view_mat3x4(R, t)
-        except Exception:
-            print("EXCEPTION")
-            continue
         new_points = 0
         for j in range(i):
             correspondences = build_correspondences(
@@ -129,6 +124,8 @@ def _track_camera_parametrized(corner_storage: CornerStorage, intrinsic_mat: np.
                 corner_storage[i],
                 ids_to_remove=point_cloud_builder.ids
             )
+            if len(correspondences.ids) == 0:
+                continue
             points, ids = triangulate_correspondences(
                 correspondences,
                 view_mats[j],
@@ -145,7 +142,7 @@ def _track_camera_parametrized(corner_storage: CornerStorage, intrinsic_mat: np.
 def _track_camera(corner_storage: CornerStorage,
                   intrinsic_mat: np.ndarray) \
         -> Tuple[List[np.ndarray], PointCloudBuilder]:
-    for angle_deg in [5.0, 1.0]:
+    for angle_deg in [5.0, 1.0, 0.1]:
         print("angle_deg =", angle_deg)
         triangulation_parameters = TriangulationParameters(
             max_reprojection_error=1.0,
@@ -184,6 +181,7 @@ def track_and_calc_colors(camera_parameters: CameraParameters,
     point_cloud = point_cloud_builder.build_point_cloud()
     poses = list(map(view_mat3x4_to_pose, view_mats))
     return poses, point_cloud
+
 
 if __name__ == '__main__':
     create_cli(track_and_calc_colors)()
