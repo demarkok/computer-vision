@@ -53,7 +53,9 @@ def _build_impl(frame_sequence: pims.FramesSequence,
         sizes=np.full(last_id, min_distance)
     )
     builder.set_corners_at_frame(0, corners)
+    print('builing corners', end=' ')
     for frame, image_1 in enumerate(frame_sequence[1:], 1):
+        print(frame, end=' ')
         next_pts, status, err = cv2.calcOpticalFlowPyrLK(
             prevImg=np.uint8(image_0 / image_0.max() * 255.0),
             nextImg=np.uint8(image_1 / image_1.max() * 255.0),
@@ -89,7 +91,7 @@ def _build_impl(frame_sequence: pims.FramesSequence,
         )
         builder.set_corners_at_frame(frame, corners)
         image_0 = image_1
-
+    print()
 
 def build(frame_sequence: pims.FramesSequence,
           progress: bool = True) -> CornerStorage:
